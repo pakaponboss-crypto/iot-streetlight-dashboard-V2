@@ -233,51 +233,111 @@ def delete_upload(upload_id: int):
 #  EXCEL PARSING
 # ══════════════════════════════════════════════════════════════════════════════
 
-COLUMN_HINTS = {
-    "contractor":    ["ผู้รับเหมา", "contractor", "บริษัท", "ผู้รับจ้าง", "ผรม"],
-    "contract_no":   ["เลขที่สัญญา", "สัญญา", "contract", "contract_no", "เลขสัญญา"],
-    "max_poles":     ["max โคม", "maxโคม", "โคมสูงสุด", "max", "จำนวนสัญญา"],
-    "actual_poles":  ["จำนวนจริง", "จำนวนเสาจริง", "actual", "จำนวนเสา", "จำนวน"],
-    "iot_available": ["iot ได้", "iotได้", "ควบคุม iot", "iot", "เสา iot"],
-    "api_connected": ["api เชื่อม", "apiเชื่อม", "เชื่อม api", "api", "เชื่อมต่อ"],
+# ── Format A: pre-aggregated (มี max โคม, จำนวนจริง, IOT ได้, API เชื่อม) ──────
+FORMAT_A_HINTS = {
+    "contractor":    ["ผู้รับเหมา", "contractor", "บริษัท", "ผู้รับจ้าง"],
+    "contract_no":   ["เลขที่สัญญา", "สัญญา", "contract"],
+    "max_poles":     ["max โคม", "maxโคม", "โคมสูงสุด", "max"],
+    "actual_poles":  ["จำนวนจริง", "จำนวนเสาจริง", "actual", "จำนวนเสา"],
+    "iot_available": ["iot ได้", "iotได้", "ควบคุม iot"],
+    "api_connected": ["api เชื่อม", "apiเชื่อม", "เชื่อม api"],
+}
+
+# ── Format B: pole-level (มี รหัสเสาไฟ, ควบคุมiot, สถานะข้อมูลจากAPI) ──────────
+FORMAT_B_HINTS = {
+    "contractor":  ["ผู้รับเหมา", "contractor", "บริษัท"],
+    "contract_no": ["เลขที่สัญญา", "สัญญา", "contract"],
+    "iot_control": ["ควบคุมiot", "ควบคุม iot", "iot"],
+    "api_status":  ["สถานะข้อมูลจากapi", "สถานะapi", "api"],
+    "max_poles":   ["จำนวนโคม", "โคม", "max โคม"],
 }
 
 
-def detect_columns(columns) -> dict:
-    mapping = {}
+def _find_col(columns, hints: list):
+    """Return first column name matching any hint (case-insensitive)."""
     for col in columns:
-        col_l = str(col).lower().strip()
-        for field, hints in COLUMN_HINTS.items():
-            if field in mapping:
-                continue
-            if any(h.lower() in col_l or col_l in h.lower() for h in hints):
-                mapping[field] = col
-    return mapping
+        col_l = str(col).lower().strip().replace('"', '').replace("'", "")
+        for h in hints:
+            if h.lower() in col_l or col_l in h.lower():
+                return col
+    return None
+
+
+def _is_format_b(columns) -> bool:
+    """Return True if columns look like pole-level data."""
+    joined = " ".join(str(c).lower() for c in columns)
+    return "ควบคุมiot" in joined or "สถานะข้อมูลจากapi" in joined or "รหัสเสาไฟ" in joined
+
+
+def _aggregate_pole_data(raw: pd.DataFrame, m: dict) -> pd.DataFrame:
+    """Aggregate pole-level rows into contract-level summary."""
+    raw = raw.copy()
+    raw["_contractor"]  = raw[m["contractor"]].astype(str).str.strip().str.strip('"\'')
+    raw["_contract_no"] = raw[m["contract_no"]].astype(str).str.strip().str.strip('"\'')
+    raw["_iot_ok"]      = raw[m["iot_control"]].astype(str).str.strip().str.strip('"\'') == "ได้"
+    raw["_api_ok"]      = raw[m["api_status"]].astype(str).str.strip().str.strip('"\'').isin(["1", "1.0", "True", "true"])
+    if m.get("max_poles"):
+        raw["_max_poles"] = pd.to_numeric(raw[m["max_poles"]], errors="coerce").fillna(0)
+    else:
+        raw["_max_poles"] = 0
+
+    grp = raw.groupby(["_contractor", "_contract_no"])
+    result = pd.DataFrame({
+        "contractor":    grp["_contractor"].first(),
+        "contract_no":   grp["_contract_no"].first(),
+        "max_poles":     grp["_max_poles"].max().astype(int),
+        "actual_poles":  grp.size(),
+        "iot_available": grp["_iot_ok"].sum().astype(int),
+        "api_connected": grp["_api_ok"].sum().astype(int),
+    }).reset_index(drop=True)
+    return result[result["contract_no"] != ""]
 
 
 def parse_excel(file):
-    """Returns (df, error_str). df is None on failure."""
+    """Returns (df, error_str). df has columns: contractor, contract_no,
+    max_poles, actual_poles, iot_available, api_connected."""
     try:
         raw = pd.read_excel(file)
     except Exception as e:
         return None, f"ไม่สามารถอ่านไฟล์ได้: {e}"
 
-    mapping = detect_columns(raw.columns)
-    missing = [f for f in COLUMN_HINTS if f not in mapping]
+    if raw.empty:
+        return None, "ไฟล์ไม่มีข้อมูล"
+
+    # ── Format B: pole-level ──────────────────────────────────────────────────
+    if _is_format_b(raw.columns):
+        m = {
+            "contractor":  _find_col(raw.columns, FORMAT_B_HINTS["contractor"]),
+            "contract_no": _find_col(raw.columns, FORMAT_B_HINTS["contract_no"]),
+            "iot_control": _find_col(raw.columns, FORMAT_B_HINTS["iot_control"]),
+            "api_status":  _find_col(raw.columns, FORMAT_B_HINTS["api_status"]),
+            "max_poles":   _find_col(raw.columns, FORMAT_B_HINTS["max_poles"]),
+        }
+        missing = [k for k in ["contractor", "contract_no", "iot_control", "api_status"] if not m[k]]
+        if missing:
+            return None, (
+                f"ไม่พบคอลัมน์ที่จำเป็น: **{', '.join(missing)}**\n\n"
+                f"คอลัมน์ที่พบในไฟล์: {list(raw.columns)}"
+            )
+        df = _aggregate_pole_data(raw, m)
+        return df, None
+
+    # ── Format A: pre-aggregated ──────────────────────────────────────────────
+    mapping = {f: _find_col(raw.columns, hints) for f, hints in FORMAT_A_HINTS.items()}
+    missing = [f for f, col in mapping.items() if not col]
     if missing:
         readable = {
             "contractor": "ผู้รับเหมา", "contract_no": "เลขที่สัญญา",
             "max_poles": "max โคม",     "actual_poles": "จำนวนจริง",
             "iot_available": "IOT ได้", "api_connected": "API เชื่อม",
         }
-        miss_names = [readable.get(m, m) for m in missing]
         return None, (
-            f"ไม่พบคอลัมน์ที่ต้องการ: **{', '.join(miss_names)}**\n\n"
+            f"ไม่พบคอลัมน์ที่ต้องการ: **{', '.join(readable.get(m,m) for m in missing)}**\n\n"
             f"คอลัมน์ที่พบในไฟล์: {list(raw.columns)}\n\n"
             "กรุณาดาวน์โหลด Template เพื่อดูรูปแบบที่ถูกต้อง"
         )
 
-    df = raw.rename(columns={v: k for k, v in mapping.items()})[list(COLUMN_HINTS.keys())]
+    df = raw.rename(columns={v: k for k, v in mapping.items()})[list(FORMAT_A_HINTS.keys())]
     df = df.dropna(how="all")
     for c in ["max_poles", "actual_poles", "iot_available", "api_connected"]:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0).astype(int)
