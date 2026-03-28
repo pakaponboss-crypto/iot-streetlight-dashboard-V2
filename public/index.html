@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IoT Streetlight Dashboard</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0f172a;
+  --sidebar:  #1e293b;
+  --card:     #1e293b;
+  --border:   #334155;
+  --text:     #f1f5f9;
+  --muted:    #94a3b8;
+  --green:    #22c55e;
+  --orange:   #f97316;
+  --red:      #ef4444;
+  --accent:   #3b82f6;
+}
+
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; }
+
+/* ── Sidebar ── */
+.sidebar {
+  width: 300px; min-width: 300px;
+  background: var(--sidebar);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  padding: 20px 16px;
+  gap: 20px;
+  overflow-y: auto;
+}
+
+.sidebar-title { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.sidebar-title span { font-size: 22px; }
+.divider { border: none; border-top: 1px solid var(--border); }
+.section-label { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+
+/* Upload zone */
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  position: relative;
+}
+.upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: rgba(59,130,246,.06); }
+.upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.upload-icon { font-size: 28px; margin-bottom: 6px; }
+.upload-hint { font-size: 13px; color: var(--muted); }
+.upload-hint strong { color: var(--text); }
+
+/* Buttons */
+.btn {
+  width: 100%; padding: 10px 14px;
+  border: none; border-radius: 8px;
+  font-size: 14px; font-weight: 500;
+  cursor: pointer; transition: opacity .15s;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.btn:hover { opacity: .85; }
+.btn-primary  { background: var(--accent); color: #fff; }
+.btn-outline  { background: transparent; color: var(--text); border: 1px solid var(--border); }
+.btn-danger   { background: rgba(239,68,68,.15); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
+.btn-sm { padding: 6px 12px; font-size: 13px; width: auto; }
+
+/* Select */
+.select-wrap { position: relative; }
+.select-wrap::after { content: '▾'; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+select {
+  width: 100%; padding: 9px 32px 9px 12px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  font-size: 14px; appearance: none; cursor: pointer;
+}
+
+/* Radio group */
+.radio-group { display: flex; flex-direction: column; gap: 6px; }
+.radio-label { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; padding: 8px 10px; border-radius: 6px; transition: background .15s; }
+.radio-label:hover { background: rgba(255,255,255,.05); }
+.radio-label input { accent-color: var(--accent); }
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 999;
+  padding: 12px 20px; border-radius: 8px; font-size: 14px;
+  color: #fff; opacity: 0; transform: translateY(8px);
+  transition: opacity .3s, transform .3s; pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.success { background: rgba(34,197,94,.9); }
+.toast.error   { background: rgba(239,68,68,.9); }
+
+/* ── Main ── */
+.main { flex: 1; overflow-y: auto; padding: 28px 32px; display: flex; flex-direction: column; gap: 20px; }
+
+.page-title { font-size: 26px; font-weight: 700; }
+
+/* KPI cards */
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 22px 20px; }
+.kpi-label { color: var(--muted); font-size: 14px; margin-bottom: 6px; }
+.kpi-value { font-size: 38px; font-weight: 700; letter-spacing: -1px; }
+
+/* Table section */
+.table-header { display: flex; align-items: center; justify-content: space-between; }
+.table-title { font-size: 17px; font-weight: 600; }
+.legend { display: flex; gap: 16px; align-items: center; }
+.leg-item { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.leg-dot  { width: 11px; height: 11px; border-radius: 3px; flex-shrink: 0; }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+thead th {
+  background: var(--card);
+  color: var(--muted);
+  padding: 10px 14px;
+  text-align: right;
+  border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+  font-weight: 500;
+  position: sticky; top: 0;
+}
+thead th:nth-child(1), thead th:nth-child(2) { text-align: left; }
+tbody td {
+  padding: 9px 14px;
+  border-bottom: 1px solid rgba(51,65,85,.5);
+  text-align: right;
+  vertical-align: middle;
+}
+tbody td:nth-child(1), tbody td:nth-child(2) { text-align: left; }
+tbody tr:hover td { background: rgba(30,41,59,.6); }
+
+.bar-wrap  { width: 120px; height: 14px; background: rgba(55,65,81,.8); border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; }
+.bar-fill  { height: 100%; border-radius: 4px; }
+
+.c-green  { color: var(--green); }
+.c-orange { color: var(--orange); }
+.c-red    { color: var(--red); }
+.c-muted  { color: var(--muted); }
+
+/* Empty state */
+.empty-state {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: var(--muted); gap: 12px; padding: 80px 0;
+}
+.empty-state .icon { font-size: 48px; }
+.empty-state p { font-size: 16px; }
+
+/* Spinner */
+.spinner {
+  width: 20px; height: 20px;
+  border: 2px solid rgba(255,255,255,.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ══════════════ SIDEBAR ══════════════ -->
+<aside class="sidebar">
+  <div class="sidebar-title"><span>💡</span> IoT Streetlight</div>
+  <hr class="divider">
+
+  <!-- Upload -->
+  <div>
+    <div class="section-label">📤 อัพโหลดข้อมูล</div>
+    <div class="upload-zone" id="uploadZone">
+      <input type="file" id="fileInput" accept=".xlsx,.xls">
+      <div class="upload-icon">📂</div>
+      <div class="upload-hint"><strong>คลิกหรือลากไฟล์มาวาง</strong><br>รองรับ .xlsx / .xls</div>
+    </div>
+    <div id="fileSelected" style="margin-top:8px;font-size:13px;color:#94a3b8;display:none"></div>
+    <button class="btn btn-primary" style="margin-top:10px;display:none" id="uploadBtn">
+      <span>💾</span> บันทึกข้อมูล
+    </button>
+  </div>
+
+  <button class="btn btn-outline" onclick="downloadTemplate()">
+    <span>📋</span> ดาวน์โหลด Template Excel
+  </button>
+
+  <hr class="divider">
+
+  <!-- Filter -->
+  <div>
+    <div class="section-label">📅 เลือกข้อมูล</div>
+    <div class="select-wrap">
+      <select id="uploadSelect" onchange="onSelectUpload()">
+        <option value="">— ยังไม่มีข้อมูล —</option>
+      </select>
+    </div>
+    <button class="btn btn-danger" style="margin-top:8px;display:none" id="deleteBtn" onclick="deleteUpload()">
+      🗑 ลบข้อมูลชุดนี้
+    </button>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Export -->
+  <div id="exportSection" style="display:none">
+    <div class="section-label">📥 Export Excel</div>
+
+    <!-- Export mode tabs -->
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <button class="btn btn-primary btn-sm" id="tabSummary" onclick="setExportTab('summary')" style="flex:1">สรุปสัญญา</button>
+      <button class="btn btn-outline btn-sm" id="tabPoles"   onclick="setExportTab('poles')"   style="flex:1">รายโคม</button>
+    </div>
+
+    <!-- Summary export -->
+    <div id="exportSummary">
+      <div class="radio-group">
+        <label class="radio-label">
+          <input type="radio" name="groupBy" value="contractor" checked> รายผู้รับเหมา (แยก sheet)
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="groupBy" value="contract"> รายเลขที่สัญญา (sheet เดียว)
+        </label>
+      </div>
+      <button class="btn btn-outline" style="margin-top:10px" onclick="exportSummary()">
+        <span>⬇️</span> ดาวน์โหลด Excel
+      </button>
+    </div>
+
+    <!-- Pole-level export -->
+    <div id="exportPoles" style="display:none">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:8px">เลือกผู้รับเหมา (ไม่เลือก = ทั้งหมด)</div>
+      <div class="select-wrap" style="margin-bottom:8px">
+        <select id="filterContractor" onchange="onContractorChange()">
+          <option value="">— ผู้รับเหมาทั้งหมด —</option>
+        </select>
+      </div>
+      <div class="select-wrap" style="margin-bottom:10px">
+        <select id="filterContract">
+          <option value="">— สัญญาทั้งหมด —</option>
+        </select>
+      </div>
+      <button class="btn btn-outline" onclick="exportPoles()">
+        <span>⬇️</span> ดาวน์โหลด Excel รายโคม
+      </button>
+    </div>
+  </div>
+</aside>
+
+<!-- ══════════════ MAIN ══════════════ -->
+<main class="main" id="main">
+  <div class="page-title">IoT Streetlight Dashboard</div>
+
+  <div class="empty-state" id="emptyState">
+    <div class="icon">💡</div>
+    <p>กรุณาอัพโหลดไฟล์ Excel จาก Sidebar ด้านซ้าย</p>
+    <p style="font-size:13px">ดาวน์โหลด Template เพื่อดูรูปแบบคอลัมน์ที่รองรับ</p>
+  </div>
+
+  <div id="dashboard" style="display:none">
+    <!-- KPI -->
+    <div class="kpi-row">
+      <div class="kpi-card"><div class="kpi-label">สัญญา</div><div class="kpi-value" id="kpiContracts">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">เสาไฟจริง</div><div class="kpi-value" id="kpiPoles">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">ควบคุม IOT ได้</div><div class="kpi-value" id="kpiIot">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">API เชื่อมแล้ว</div><div class="kpi-value" id="kpiApi">—</div></div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-header">
+      <div class="table-title">ตารางสรุปแยกตามสัญญา</div>
+      <div class="legend">
+        <div class="leg-item"><div class="leg-dot" style="background:#22c55e"></div> IOT+API OK</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#f97316"></div> IOT OK ยังไม่ API</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#ef4444"></div> IOT ไม่ได้</div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ผู้รับเหมา</th>
+            <th>เลขที่สัญญา</th>
+            <th>max โคม</th>
+            <th>จำนวนจริง</th>
+            <th>ส่วนต่าง</th>
+            <th>IOT ได้</th>
+            <th>API เชื่อม</th>
+            <th>ยังไม่เชื่อม</th>
+            <th>สัดส่วน IOT</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let currentUploadId = null;
+let selectedFile    = null;
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  setTimeout(() => { t.className = 'toast'; }, 3500);
+}
+
+// ── Number Format ────────────────────────────────────────────────────────────
+const fmt = n => Number(n).toLocaleString('th-TH');
+
+// ── Load Uploads ─────────────────────────────────────────────────────────────
+async function loadUploads() {
+  const res  = await fetch('/api/uploads');
+  const list = await res.json();
+  const sel  = document.getElementById('uploadSelect');
+
+  sel.innerHTML = list.length
+    ? list.map(u => `<option value="${u.id}">${u.upload_date} ${u.upload_time} — ${u.filename}</option>`).join('')
+    : '<option value="">— ยังไม่มีข้อมูล —</option>';
+
+  if (list.length) {
+    currentUploadId = list[0].id;
+    sel.value = currentUploadId;
+    document.getElementById('deleteBtn').style.display = '';
+    document.getElementById('exportSection').style.display = '';
+    await Promise.all([loadData(currentUploadId), loadContractorTree()]);
+  } else {
+    showEmpty();
+  }
+}
+
+function onSelectUpload() {
+  const v = document.getElementById('uploadSelect').value;
+  if (!v) return;
+  currentUploadId = v;
+  loadData(v);
+  loadContractorTree();
+}
+
+// ── Load & Render Data ───────────────────────────────────────────────────────
+async function loadData(uploadId) {
+  const res  = await fetch(`/api/data/${uploadId}`);
+  const data = await res.json();
+
+  if (!data.length) { showEmpty(); return; }
+
+  // KPI
+  const totContracts = data.length;
+  const totPoles     = data.reduce((s, r) => s + r.actual_poles,  0);
+  const totIot       = data.reduce((s, r) => s + r.iot_available, 0);
+  const totApi       = data.reduce((s, r) => s + r.api_connected, 0);
+
+  document.getElementById('kpiContracts').textContent = fmt(totContracts);
+  document.getElementById('kpiPoles').textContent     = fmt(totPoles);
+  document.getElementById('kpiIot').textContent       = fmt(totIot);
+  document.getElementById('kpiApi').textContent       = fmt(totApi);
+
+  // Table
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = data.map(r => {
+    const diff  = r.actual_poles - r.max_poles;
+    const notCn = r.iot_available - r.api_connected;
+    const ratio = r.actual_poles > 0 ? r.iot_available / r.actual_poles : 0;
+    const pct   = Math.min(ratio * 100, 100).toFixed(0);
+
+    let status, barColor;
+    if (r.iot_available > 0 && r.api_connected > 0)      { status = 'green';  barColor = '#22c55e'; }
+    else if (r.iot_available > 0 && r.api_connected == 0) { status = 'orange'; barColor = '#f97316'; }
+    else                                                   { status = 'red';    barColor = '#ef4444'; }
+
+    const diffHtml = diff > 0
+      ? `<span class="c-green">+${fmt(diff)}</span>`
+      : diff < 0
+      ? `<span class="c-red">${fmt(diff)}</span>`
+      : `<span class="c-muted">0</span>`;
+
+    return `<tr>
+      <td>${r.contractor}</td>
+      <td>${r.contract_no}</td>
+      <td>${fmt(r.max_poles)}</td>
+      <td>${fmt(r.actual_poles)}</td>
+      <td>${diffHtml}</td>
+      <td><span class="${r.iot_available > 0 ? 'c-green' : 'c-muted'}">${fmt(r.iot_available)}</span></td>
+      <td><span class="${r.api_connected > 0 ? 'c-green' : 'c-muted'}">${fmt(r.api_connected)}</span></td>
+      <td><span class="${notCn > 0 ? 'c-orange' : 'c-muted'}">${fmt(notCn)}</span></td>
+      <td><div class="bar-wrap"><div class="bar-fill" style="width:${pct}%;background:${barColor}"></div></div></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('emptyState').style.display  = 'none';
+  document.getElementById('dashboard').style.display   = '';
+}
+
+function showEmpty() {
+  document.getElementById('emptyState').style.display  = '';
+  document.getElementById('dashboard').style.display   = 'none';
+}
+
+// ── Upload ───────────────────────────────────────────────────────────────────
+document.getElementById('fileInput').addEventListener('change', function () {
+  selectedFile = this.files[0];
+  if (!selectedFile) return;
+  const infoEl = document.getElementById('fileSelected');
+  infoEl.textContent = `✅ เลือกแล้ว: ${selectedFile.name}`;
+  infoEl.style.display = '';
+  document.getElementById('uploadBtn').style.display = '';
+});
+
+// Drag & drop
+const zone = document.getElementById('uploadZone');
+zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) {
+    selectedFile = f;
+    document.getElementById('fileSelected').textContent = `✅ เลือกแล้ว: ${f.name}`;
+    document.getElementById('fileSelected').style.display = '';
+    document.getElementById('uploadBtn').style.display = '';
+  }
+});
+
+document.getElementById('uploadBtn').addEventListener('click', async () => {
+  if (!selectedFile) return;
+  const btn = document.getElementById('uploadBtn');
+  btn.innerHTML = '<div class="spinner"></div> กำลังบันทึก...';
+  btn.disabled = true;
+
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+
+  try {
+    const res  = await fetch('/api/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'เกิดข้อผิดพลาด');
+    showToast(`✅ บันทึกแล้ว ${data.rowCount} แถว`);
+    selectedFile = null;
+    document.getElementById('fileSelected').style.display = '';
+    btn.style.display = 'none';
+    document.getElementById('fileInput').value = '';
+    await loadUploads();
+  } catch (e) {
+    showToast(`❌ ${e.message}`, 'error');
+  } finally {
+    btn.innerHTML = '<span>💾</span> บันทึกข้อมูล';
+    btn.disabled = false;
+  }
+});
+
+// ── Delete ───────────────────────────────────────────────────────────────────
+async function deleteUpload() {
+  if (!currentUploadId) return;
+  if (!confirm('ต้องการลบข้อมูลชุดนี้?')) return;
+  await fetch(`/api/uploads/${currentUploadId}`, { method: 'DELETE' });
+  showToast('🗑 ลบข้อมูลแล้ว');
+  currentUploadId = null;
+  document.getElementById('deleteBtn').style.display   = 'none';
+  document.getElementById('exportSection').style.display = 'none';
+  await loadUploads();
+}
+
+// ── Export Tabs ───────────────────────────────────────────────────────────────
+let contractorTree = [];
+
+function setExportTab(tab) {
+  const isSummary = tab === 'summary';
+  document.getElementById('exportSummary').style.display = isSummary ? '' : 'none';
+  document.getElementById('exportPoles').style.display   = isSummary ? 'none' : '';
+  document.getElementById('tabSummary').className = `btn btn-sm ${isSummary ? 'btn-primary' : 'btn-outline'}`;
+  document.getElementById('tabPoles').className   = `btn btn-sm ${isSummary ? 'btn-outline' : 'btn-primary'}`;
+}
+
+async function loadContractorTree() {
+  if (!currentUploadId) return;
+  const res  = await fetch(`/api/contractors/${currentUploadId}`);
+  contractorTree = await res.json();
+  const sel  = document.getElementById('filterContractor');
+  sel.innerHTML = '<option value="">— ผู้รับเหมาทั้งหมด —</option>' +
+    contractorTree.map(c => `<option value="${c.contractor}">${c.contractor}</option>`).join('');
+  document.getElementById('filterContract').innerHTML = '<option value="">— สัญญาทั้งหมด —</option>';
+}
+
+function onContractorChange() {
+  const contractor = document.getElementById('filterContractor').value;
+  const found = contractorTree.find(c => c.contractor === contractor);
+  const contracts = found ? found.contracts : [];
+  document.getElementById('filterContract').innerHTML =
+    '<option value="">— สัญญาทั้งหมด —</option>' +
+    contracts.map(c => `<option value="${c}">${c}</option>`).join('');
+}
+
+// ── Export ───────────────────────────────────────────────────────────────────
+function exportSummary() {
+  if (!currentUploadId) return;
+  const groupBy = document.querySelector('input[name=groupBy]:checked').value;
+  window.location.href = `/api/export/${currentUploadId}?groupBy=${groupBy}`;
+}
+
+function exportPoles() {
+  if (!currentUploadId) return;
+  const contractor = document.getElementById('filterContractor').value;
+  const contract   = document.getElementById('filterContract').value;
+  const params = new URLSearchParams();
+  if (contractor) params.set('contractor', contractor);
+  if (contract)   params.set('contract', contract);
+  window.location.href = `/api/export/${currentUploadId}/poles?${params}`;
+}
+
+// ── Template ─────────────────────────────────────────────────────────────────
+function downloadTemplate() {
+  window.location.href = '/api/template';
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+loadUploads();
+</script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# ── Node.js ───────────────────────────────────────────────────────────────────
+node_modules/
+package-lock.json
+
+# ── Credentials (NEVER commit these) ─────────────────────────────────────────
+.streamlit/secrets.toml
+tokens.json
+client_secret*.json
+gen-lang-client*.json
+
+# ── Local data (stored on Google Drive, not in repo) ─────────────────────────
+cache/
+data/
+*.log
+
+# ── IDE / OS ──────────────────────────────────────────────────────────────────
+.claude/
+.env
+.DS_Store
