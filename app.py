@@ -1,6 +1,7 @@
 import io
 import json
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from datetime import datetime
 from googleapiclient.discovery import build
@@ -379,38 +380,54 @@ def render_table(df: pd.DataFrame):
           <td>{bar}</td>
         </tr>""")
 
-    html = f"""
-    <div class="legend-row">
-      <div class="legend-item">
-        <span class="leg-dot" style="background:#22c55e"></span> IOT+API OK
-      </div>
-      <div class="legend-item">
-        <span class="leg-dot" style="background:#f97316"></span> IOT OK ยังไม่ API
-      </div>
-      <div class="legend-item">
-        <span class="leg-dot" style="background:#ef4444"></span> IOT ไม่ได้
-      </div>
-    </div>
-    <table class="dt">
-      <thead>
-        <tr>
-          <th>ผู้รับเหมา</th>
-          <th>เลขที่สัญญา</th>
-          <th>max โคม</th>
-          <th>จำนวนจริง</th>
-          <th>ส่วนต่าง</th>
-          <th>IOT ได้</th>
-          <th>API เชื่อม</th>
-          <th>ยังไม่เชื่อม</th>
-          <th>สัดส่วน IOT</th>
-        </tr>
-      </thead>
-      <tbody>
-        {"".join(rows_html)}
-      </tbody>
-    </table>
-    """
-    st.markdown(html, unsafe_allow_html=True)
+    rows_joined = "".join(rows_html)
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  body {{ margin:0; padding:0; background:transparent; color:#f1f5f9;
+          font-family:'Segoe UI',sans-serif; font-size:14px; }}
+  .legend-row {{ display:flex; gap:20px; align-items:center; justify-content:flex-end;
+                 margin-bottom:8px; }}
+  .legend-item {{ display:flex; align-items:center; gap:6px; font-size:13px; color:#cbd5e1; }}
+  .leg-dot {{ width:12px; height:12px; border-radius:3px; display:inline-block; }}
+  table {{ width:100%; border-collapse:collapse; }}
+  th {{ background:#1e293b; color:#94a3b8; padding:10px 14px; text-align:right;
+        border-bottom:2px solid #334155; white-space:nowrap; font-weight:500; }}
+  th:first-child, th:nth-child(2) {{ text-align:left; }}
+  td {{ padding:10px 14px; border-bottom:1px solid #0f172a; text-align:right;
+        vertical-align:middle; }}
+  td:first-child, td:nth-child(2) {{ text-align:left; }}
+  tr:hover td {{ background:#1e293b; }}
+  .bar-wrap {{ width:130px; height:16px; background:#374151; border-radius:4px;
+               overflow:hidden; display:inline-block; vertical-align:middle; }}
+  .bar-fill {{ height:100%; border-radius:4px; }}
+  .c-green  {{ color:#22c55e; }}
+  .c-orange {{ color:#f97316; }}
+  .c-red    {{ color:#ef4444; }}
+  .c-gray   {{ color:#64748b; }}
+</style>
+</head>
+<body>
+<div class="legend-row">
+  <div class="legend-item"><span class="leg-dot" style="background:#22c55e"></span> IOT+API OK</div>
+  <div class="legend-item"><span class="leg-dot" style="background:#f97316"></span> IOT OK ยังไม่ API</div>
+  <div class="legend-item"><span class="leg-dot" style="background:#ef4444"></span> IOT ไม่ได้</div>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>ผู้รับเหมา</th><th>เลขที่สัญญา</th><th>max โคม</th><th>จำนวนจริง</th>
+      <th>ส่วนต่าง</th><th>IOT ได้</th><th>API เชื่อม</th><th>ยังไม่เชื่อม</th><th>สัดส่วน IOT</th>
+    </tr>
+  </thead>
+  <tbody>{rows_joined}</tbody>
+</table>
+</body>
+</html>"""
+    height = max(300, len(df) * 41 + 120)
+    components.html(html, height=height, scrolling=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
